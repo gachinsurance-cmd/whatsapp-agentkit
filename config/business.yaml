@@ -1,0 +1,21 @@
+# Configuración del negocio — Generado por AgentKit
+negocio:
+  nombre: "Activaciones Garza"
+  descripcion: >
+    Venta de programación de streaming a través de dos aplicaciones: LamTV y AztkPlay.
+    Ofrecemos series de TV, películas y canales de TV en vivo. Nuestros clientes son
+    personas que desean acceder a todo el contenido de streaming en una sola app,
+    sin pagar múltiples suscripciones separadas.
+  horario: "Lunes a Domingo de 9:00am a 10:30pm"
+
+agente:
+  nombre: "ActivaBot"
+  tono: "amigable y casual"
+  casos_de_uso:
+    - "Responder preguntas frecuentes sobre planes, precios y dispositivos"
+    - "Tomar pedidos de nuevas activaciones"
+    - "Soporte post-venta y renovaciones de servicio"
+
+metadata:
+  creado: "2026-04-19"
+  version: "1.0"
