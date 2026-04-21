@@ -56,11 +56,8 @@ async def webhook_verificacion(request: Request):
     return {"status": "ok"}
 
 
-@app.post("/webhook")
-async def webhook_handler(request: Request):
-    """
-    Recibe mensajes de WhatsApp, genera respuesta con Claude y la envía de vuelta.
-    """
+async def _procesar_mensajes(request: Request):
+    """Lógica principal del webhook — compartida entre rutas."""
     try:
         mensajes = await proveedor.parsear_webhook(request)
 
@@ -72,8 +69,6 @@ async def webhook_handler(request: Request):
 
             historial = await obtener_historial(msg.telefono)
             respuesta = await generar_respuesta(msg.texto, historial)
-
-            # Detectar si el agente marcó una solicitud de instalación personal
             respuesta = await procesar_instalacion(respuesta, msg.telefono)
 
             await guardar_mensaje(msg.telefono, "user", msg.texto)
@@ -88,3 +83,24 @@ async def webhook_handler(request: Request):
     except Exception as e:
         logger.error(f"Error en webhook: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/webhook")
+async def webhook_handler(request: Request):
+    return await _procesar_mensajes(request)
+
+
+@app.get("/webhook/messages")
+@app.get("/webhook/messages/messages")
+async def webhook_messages_verificacion(request: Request):
+    return {"status": "ok"}
+
+
+@app.post("/webhook/messages")
+async def webhook_messages_handler(request: Request):
+    return await _procesar_mensajes(request)
+
+
+@app.post("/webhook/messages/messages")
+async def webhook_messages_messages_handler(request: Request):
+    return await _procesar_mensajes(request)

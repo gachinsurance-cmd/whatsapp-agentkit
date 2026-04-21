@@ -23,10 +23,57 @@ def cargar_config_prompts() -> dict:
         return {}
 
 
+def leer_knowledge() -> str:
+    """
+    Lee todos los archivos de /knowledge automáticamente.
+    Soporta: PDF, TXT, MD, CSV, JSON.
+    Sin necesidad de actualizar el código al agregar archivos.
+    """
+    knowledge_dir = "knowledge"
+    if not os.path.exists(knowledge_dir):
+        return ""
+
+    contenidos = []
+
+    for archivo in sorted(os.listdir(knowledge_dir)):
+        if archivo.startswith("."):
+            continue
+        ruta = os.path.join(knowledge_dir, archivo)
+        if not os.path.isfile(ruta):
+            continue
+
+        ext = archivo.lower().split(".")[-1]
+        texto = ""
+
+        try:
+            if ext == "pdf":
+                from pypdf import PdfReader
+                reader = PdfReader(ruta)
+                texto = "\n".join(page.extract_text() or "" for page in reader.pages)
+            elif ext in ("txt", "md", "csv", "json", "yaml", "yml"):
+                with open(ruta, "r", encoding="utf-8", errors="ignore") as f:
+                    texto = f.read()
+        except Exception as e:
+            logger.warning(f"No se pudo leer {archivo}: {e}")
+            continue
+
+        if texto.strip():
+            contenidos.append(f"### {archivo}\n{texto.strip()}")
+            logger.debug(f"Knowledge cargado: {archivo} ({len(texto)} chars)")
+
+    return "\n\n".join(contenidos)
+
+
 def cargar_system_prompt() -> str:
-    """Lee el system prompt desde config/prompts.yaml."""
+    """Lee el system prompt y agrega el contenido de /knowledge automáticamente."""
     config = cargar_config_prompts()
-    return config.get("system_prompt", "Eres un asistente útil. Responde en español.")
+    base = config.get("system_prompt", "Eres un asistente útil. Responde en español.")
+
+    conocimiento = leer_knowledge()
+    if conocimiento:
+        base += f"\n\n## Información del negocio (documentos)\n{conocimiento}"
+
+    return base
 
 
 def obtener_mensaje_error() -> str:
