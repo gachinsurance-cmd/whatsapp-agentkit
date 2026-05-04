@@ -12,6 +12,9 @@ logger = logging.getLogger("agentkit")
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+# Caché en memoria: {nombre_archivo: {"mtime": float, "content": str}}
+_knowledge_cache: dict[str, dict] = {}
+
 
 def cargar_config_prompts() -> dict:
     """Lee toda la configuración desde config/prompts.yaml."""
@@ -23,17 +26,27 @@ def cargar_config_prompts() -> dict:
         return {}
 
 
-def leer_knowledge() -> str:
-    """
-    Lee todos los archivos de /knowledge automáticamente.
-    Soporta: PDF, TXT, MD, CSV, JSON.
-    Sin necesidad de actualizar el código al agregar archivos.
-    """
+def _leer_archivo(archivo: str, ruta: str) -> str:
+    """Extrae texto de un archivo según su extensión."""
+    ext = archivo.lower().rsplit(".", 1)[-1]
+    try:
+        if ext == "pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(ruta)
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+        elif ext in ("txt", "md", "csv", "json", "yaml", "yml"):
+            with open(ruta, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
+    except Exception as e:
+        logger.warning(f"No se pudo leer {archivo}: {e}")
+    return ""
+
+
+def inicializar_knowledge():
+    """Precarga todos los archivos de /knowledge al arrancar el servidor."""
     knowledge_dir = "knowledge"
     if not os.path.exists(knowledge_dir):
-        return ""
-
-    contenidos = []
+        return
 
     for archivo in sorted(os.listdir(knowledge_dir)):
         if archivo.startswith("."):
@@ -42,25 +55,56 @@ def leer_knowledge() -> str:
         if not os.path.isfile(ruta):
             continue
 
-        ext = archivo.lower().split(".")[-1]
-        texto = ""
+        mtime = os.path.getmtime(ruta)
+        texto = _leer_archivo(archivo, ruta)
+        if texto.strip():
+            _knowledge_cache[archivo] = {"mtime": mtime, "content": texto.strip()}
+            logger.info(f"Knowledge cargado al inicio: {archivo} ({len(texto)} chars)")
 
-        try:
-            if ext == "pdf":
-                from pypdf import PdfReader
-                reader = PdfReader(ruta)
-                texto = "\n".join(page.extract_text() or "" for page in reader.pages)
-            elif ext in ("txt", "md", "csv", "json", "yaml", "yml"):
-                with open(ruta, "r", encoding="utf-8", errors="ignore") as f:
-                    texto = f.read()
-        except Exception as e:
-            logger.warning(f"No se pudo leer {archivo}: {e}")
+    logger.info(f"Knowledge listo: {len(_knowledge_cache)} archivo(s) en caché")
+
+
+def leer_knowledge() -> str:
+    """
+    Retorna el contenido de /knowledge desde caché.
+    Verifica mtime en cada llamada y recarga solo los archivos que cambiaron.
+    """
+    knowledge_dir = "knowledge"
+    if not os.path.exists(knowledge_dir):
+        return ""
+
+    archivos_en_disco: set[str] = set()
+
+    for archivo in sorted(os.listdir(knowledge_dir)):
+        if archivo.startswith("."):
+            continue
+        ruta = os.path.join(knowledge_dir, archivo)
+        if not os.path.isfile(ruta):
             continue
 
-        if texto.strip():
-            contenidos.append(f"### {archivo}\n{texto.strip()}")
-            logger.debug(f"Knowledge cargado: {archivo} ({len(texto)} chars)")
+        archivos_en_disco.add(archivo)
+        mtime = os.path.getmtime(ruta)
+        cached = _knowledge_cache.get(archivo)
 
+        if cached and cached["mtime"] == mtime:
+            continue  # Sin cambios — usar caché
+
+        texto = _leer_archivo(archivo, ruta)
+        if texto.strip():
+            accion = "recargado" if archivo in _knowledge_cache else "cargado"
+            _knowledge_cache[archivo] = {"mtime": mtime, "content": texto.strip()}
+            logger.info(f"Knowledge {accion}: {archivo} ({len(texto)} chars)")
+
+    # Eliminar del caché archivos que ya no existen en disco
+    eliminados = set(_knowledge_cache.keys()) - archivos_en_disco
+    for archivo in eliminados:
+        del _knowledge_cache[archivo]
+        logger.info(f"Knowledge eliminado del caché: {archivo}")
+
+    contenidos = [
+        f"### {nombre}\n{data['content']}"
+        for nombre, data in sorted(_knowledge_cache.items())
+    ]
     return "\n\n".join(contenidos)
 
 
