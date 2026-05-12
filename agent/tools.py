@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("agentkit")
 
+KNOWLEDGE_DIR = os.getenv("KNOWLEDGE_DIR", "knowledge")
+
 
 def cargar_info_negocio() -> dict:
     """Carga la información del negocio desde business.yaml."""
@@ -36,15 +38,14 @@ def obtener_horario() -> dict:
 
 
 def buscar_en_knowledge(consulta: str) -> str:
-    """Busca información relevante en los archivos de /knowledge."""
+    """Busca información relevante en los archivos de KNOWLEDGE_DIR."""
     resultados = []
-    knowledge_dir = "knowledge"
 
-    if not os.path.exists(knowledge_dir):
+    if not os.path.exists(KNOWLEDGE_DIR):
         return "No hay archivos de conocimiento disponibles."
 
-    for archivo in os.listdir(knowledge_dir):
-        ruta = os.path.join(knowledge_dir, archivo)
+    for archivo in os.listdir(KNOWLEDGE_DIR):
+        ruta = os.path.join(KNOWLEDGE_DIR, archivo)
         if archivo.startswith(".") or not os.path.isfile(ruta):
             continue
         try:

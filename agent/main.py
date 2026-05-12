@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from agent.brain import generar_respuesta, inicializar_knowledge
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
+from agent.startup import migrar_knowledge
 from agent.tools import procesar_instalacion
 
 load_dotenv()
@@ -28,6 +29,7 @@ PORT = int(os.getenv("PORT", 8000))
 async def lifespan(app: FastAPI):
     """Inicializa la base de datos y el caché de knowledge al arrancar."""
     await inicializar_db()
+    migrar_knowledge()
     inicializar_knowledge()
     logger.info("Base de datos inicializada")
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")

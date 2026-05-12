@@ -12,6 +12,8 @@ logger = logging.getLogger("agentkit")
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+KNOWLEDGE_DIR = os.getenv("KNOWLEDGE_DIR", "knowledge")
+
 # Caché en memoria: {nombre_archivo: {"mtime": float, "content": str}}
 _knowledge_cache: dict[str, dict] = {}
 
@@ -43,15 +45,14 @@ def _leer_archivo(archivo: str, ruta: str) -> str:
 
 
 def inicializar_knowledge():
-    """Precarga todos los archivos de /knowledge al arrancar el servidor."""
-    knowledge_dir = "knowledge"
-    if not os.path.exists(knowledge_dir):
+    """Precarga todos los archivos de KNOWLEDGE_DIR al arrancar el servidor."""
+    if not os.path.exists(KNOWLEDGE_DIR):
         return
 
-    for archivo in sorted(os.listdir(knowledge_dir)):
+    for archivo in sorted(os.listdir(KNOWLEDGE_DIR)):
         if archivo.startswith("."):
             continue
-        ruta = os.path.join(knowledge_dir, archivo)
+        ruta = os.path.join(KNOWLEDGE_DIR, archivo)
         if not os.path.isfile(ruta):
             continue
 
@@ -66,19 +67,18 @@ def inicializar_knowledge():
 
 def leer_knowledge() -> str:
     """
-    Retorna el contenido de /knowledge desde caché.
+    Retorna el contenido de KNOWLEDGE_DIR desde caché.
     Verifica mtime en cada llamada y recarga solo los archivos que cambiaron.
     """
-    knowledge_dir = "knowledge"
-    if not os.path.exists(knowledge_dir):
+    if not os.path.exists(KNOWLEDGE_DIR):
         return ""
 
     archivos_en_disco: set[str] = set()
 
-    for archivo in sorted(os.listdir(knowledge_dir)):
+    for archivo in sorted(os.listdir(KNOWLEDGE_DIR)):
         if archivo.startswith("."):
             continue
-        ruta = os.path.join(knowledge_dir, archivo)
+        ruta = os.path.join(KNOWLEDGE_DIR, archivo)
         if not os.path.isfile(ruta):
             continue
 
