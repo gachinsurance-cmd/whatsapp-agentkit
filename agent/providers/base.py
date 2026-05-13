@@ -13,6 +13,7 @@ class MensajeEntrante:
     texto: str
     mensaje_id: str
     es_propio: bool
+    tipo: str = "texto"  # "texto" | "imagen" | "audio" | "video" | "otro"
 
 
 class ProveedorWhatsApp(ABC):

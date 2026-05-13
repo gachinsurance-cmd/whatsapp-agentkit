@@ -20,30 +20,51 @@ class ProveedorEvolution(ProveedorWhatsApp):
         body = await request.json()
         mensajes = []
 
-        event = body.get("event", "")
-        if event != "messages.upsert":
+        if body.get("event") != "messages.upsert":
             return mensajes
 
         data = body.get("data", {})
         key = data.get("key", {})
         message = data.get("message", {})
 
+        remote_jid = key.get("remoteJid", "")
+
+        # Ignorar mensajes de grupos
+        if "@g.us" in remote_jid:
+            return mensajes
+
+        telefono = remote_jid.replace("@s.whatsapp.net", "")
+        if not telefono:
+            return mensajes
+
         texto = (
             message.get("conversation")
             or message.get("extendedTextMessage", {}).get("text")
             or ""
         )
-        telefono = key.get("remoteJid", "").replace("@s.whatsapp.net", "").replace("@g.us", "")
         mensaje_id = key.get("id", "")
         es_propio = key.get("fromMe", False)
 
-        if texto and telefono:
-            mensajes.append(MensajeEntrante(
-                telefono=telefono,
-                texto=texto,
-                mensaje_id=mensaje_id,
-                es_propio=es_propio,
-            ))
+        # Detectar tipo de media
+        msg_type = data.get("messageType", "conversation")
+        if "imageMessage" in message or msg_type == "imageMessage":
+            tipo = "imagen"
+        elif "audioMessage" in message or msg_type in ("audioMessage", "pttMessage"):
+            tipo = "audio"
+        elif "videoMessage" in message or msg_type == "videoMessage":
+            tipo = "video"
+        elif "stickerMessage" in message or msg_type == "stickerMessage":
+            tipo = "otro"
+        else:
+            tipo = "texto"
+
+        mensajes.append(MensajeEntrante(
+            telefono=telefono,
+            texto=texto,
+            mensaje_id=mensaje_id,
+            es_propio=es_propio,
+            tipo=tipo,
+        ))
 
         return mensajes
 
@@ -54,14 +75,8 @@ class ProveedorEvolution(ProveedorWhatsApp):
             return False
 
         url = f"{self.api_url}/message/sendText/{self.instance}"
-        headers = {
-            "apikey": self.api_key,
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "number": telefono,
-            "text": mensaje,
-        }
+        headers = {"apikey": self.api_key, "Content-Type": "application/json"}
+        payload = {"number": telefono, "text": mensaje}
 
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(url, json=payload, headers=headers)

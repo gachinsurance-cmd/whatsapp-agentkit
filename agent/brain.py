@@ -109,13 +109,30 @@ def leer_knowledge() -> str:
 
 
 def cargar_system_prompt() -> str:
-    """Lee el system prompt y agrega el contenido de /knowledge automáticamente."""
+    """Lee el system prompt y agrega knowledge, fallas activas e instrucción de escalación."""
     config = cargar_config_prompts()
     base = config.get("system_prompt", "Eres un asistente útil. Responde en español.")
 
     conocimiento = leer_knowledge()
     if conocimiento:
         base += f"\n\n## Información del negocio (documentos)\n{conocimiento}"
+
+    # Inyectar fallas activas (sync — caché en memoria de agent/fallas.py)
+    from agent.fallas import get_fallas_texto
+    fallas = get_fallas_texto()
+    if fallas:
+        base += (
+            f"\n\n## Servicios con falla activa en este momento\n{fallas}\n"
+            "Si el cliente pregunta por cualquiera de estos servicios, responde exactamente: "
+            "\"Ya está reportado al proveedor. Te aviso cuando se restablezca 🙏\""
+        )
+
+    base += (
+        "\n\n## Cuándo pedir atención humana\n"
+        "Si el cliente hace una pregunta que genuinamente no puedes responder con tu información, "
+        "o necesita atención personalizada más allá de tu conocimiento, "
+        "agrega exactamente \"[ESCALAR]\" al FINAL de tu respuesta — sin mencionárselo al cliente."
+    )
 
     return base
 

@@ -10,6 +10,9 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from agent.auth import ADMIN_USERNAME, create_token, verify_password, verify_token
+from agent.escalation import (
+    bloquear, desbloquear, desescalar, listar_bloqueados, listar_escalaciones,
+)
 
 logger = logging.getLogger("agentkit")
 
@@ -226,4 +229,61 @@ async def delete_file(filename: str, request: Request):
         raise HTTPException(status_code=500, detail=f"No se pudo eliminar: {e}")
 
     logger.info(f"Admin eliminó archivo: {filename}")
+    return {"ok": True}
+
+
+# ── Escalaciones ───────────────────────────────────────────────────────────────
+
+@router.get("/escalaciones")
+async def get_escalaciones(request: Request):
+    """Lista los clientes actualmente escalados."""
+    _require_auth(request)
+    return {"escalaciones": await listar_escalaciones()}
+
+
+@router.delete("/escalaciones/{telefono}")
+async def delete_escalacion(telefono: str, request: Request):
+    """Desescala manualmente un cliente desde el panel admin."""
+    _require_auth(request)
+    fue_desescalado = await desescalar(telefono)
+    if not fue_desescalado:
+        raise HTTPException(status_code=404, detail="Cliente no está escalado")
+    logger.info(f"Admin desescaló manualmente: {telefono}")
+    return {"ok": True}
+
+
+# ── Lista negra ────────────────────────────────────────────────────────────────
+
+class BloqueadoRequest(BaseModel):
+    telefono: str
+    motivo: str = ""
+
+
+@router.get("/bloqueados")
+async def get_bloqueados(request: Request):
+    """Lista los números en la lista negra."""
+    _require_auth(request)
+    return {"bloqueados": await listar_bloqueados()}
+
+
+@router.post("/bloqueados")
+async def add_bloqueado(body: BloqueadoRequest, request: Request):
+    """Agrega un número a la lista negra."""
+    _require_auth(request)
+    telefono = body.telefono.strip()
+    if not telefono:
+        raise HTTPException(status_code=400, detail="Teléfono requerido")
+    await bloquear(telefono, body.motivo.strip())
+    logger.info(f"Admin bloqueó: {telefono}")
+    return {"ok": True}
+
+
+@router.delete("/bloqueados/{telefono}")
+async def remove_bloqueado(telefono: str, request: Request):
+    """Quita un número de la lista negra."""
+    _require_auth(request)
+    fue_desbloqueado = await desbloquear(telefono)
+    if not fue_desbloqueado:
+        raise HTTPException(status_code=404, detail="Número no está en la lista negra")
+    logger.info(f"Admin desbloqueó: {telefono}")
     return {"ok": True}

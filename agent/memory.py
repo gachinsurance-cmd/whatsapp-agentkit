@@ -1,11 +1,11 @@
-# agent/memory.py — Memoria de conversaciones con SQLite
-# Generado por AgentKit
+# agent/memory.py — Memoria de conversaciones y estado del sistema
 
 import os
 from datetime import datetime
+from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Text, DateTime, select, Integer
+from sqlalchemy import Boolean, String, Text, DateTime, select, Integer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,7 +24,6 @@ class Base(DeclarativeBase):
 
 
 class Mensaje(Base):
-    """Modelo de mensaje en la base de datos."""
     __tablename__ = "mensajes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -34,36 +33,52 @@ class Mensaje(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class Escalacion(Base):
+    __tablename__ = "escalaciones"
+
+    telefono: Mapped[str] = mapped_column(String(50), primary_key=True)
+    razon: Mapped[str] = mapped_column(String(30), default="")
+    ultimo_mensaje: Mapped[str] = mapped_column(Text, default="")
+    escalado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ultimo_contacto: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class FallaServicio(Base):
+    __tablename__ = "fallas_servicio"
+
+    servicio: Mapped[str] = mapped_column(String(50), primary_key=True)
+    razon: Mapped[str] = mapped_column(Text, default="")
+    activa: Mapped[bool] = mapped_column(Boolean, default=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resuelto_en: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class NumeroBloqueado(Base):
+    __tablename__ = "numeros_bloqueados"
+
+    telefono: Mapped[str] = mapped_column(String(50), primary_key=True)
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 async def inicializar_db():
-    """Crea las tablas si no existen."""
+    """Crea todas las tablas si no existen."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
-    """Guarda un mensaje en el historial de conversación."""
     async with async_session() as session:
-        mensaje = Mensaje(
+        session.add(Mensaje(
             telefono=telefono,
             role=role,
             content=content,
-            timestamp=datetime.utcnow()
-        )
-        session.add(mensaje)
+            timestamp=datetime.utcnow(),
+        ))
         await session.commit()
 
 
 async def obtener_historial(telefono: str, limite: int = 20) -> list[dict]:
-    """
-    Recupera los últimos N mensajes de una conversación.
-
-    Args:
-        telefono: Número de teléfono del cliente
-        limite: Máximo de mensajes a recuperar (default: 20)
-
-    Returns:
-        Lista de diccionarios con role y content
-    """
     async with async_session() as session:
         query = (
             select(Mensaje)
@@ -74,18 +89,12 @@ async def obtener_historial(telefono: str, limite: int = 20) -> list[dict]:
         result = await session.execute(query)
         mensajes = result.scalars().all()
         mensajes.reverse()
-        return [
-            {"role": msg.role, "content": msg.content}
-            for msg in mensajes
-        ]
+        return [{"role": m.role, "content": m.content} for m in mensajes]
 
 
 async def limpiar_historial(telefono: str):
-    """Borra todo el historial de una conversación."""
     async with async_session() as session:
-        query = select(Mensaje).where(Mensaje.telefono == telefono)
-        result = await session.execute(query)
-        mensajes = result.scalars().all()
-        for msg in mensajes:
-            await session.delete(msg)
+        result = await session.execute(select(Mensaje).where(Mensaje.telefono == telefono))
+        for m in result.scalars().all():
+            await session.delete(m)
         await session.commit()
