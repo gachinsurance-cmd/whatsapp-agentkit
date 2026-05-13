@@ -7,9 +7,12 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse
 from dotenv import load_dotenv
 
+from apscheduler.triggers.cron import CronTrigger
+
 from agent.admin import router as admin_router
 from agent.admin_commands import es_comando_admin, ejecutar_comando
 from agent.brain import generar_respuesta, inicializar_knowledge
+from agent.clientes import seed_plantillas
 from agent.escalation import (
     chequear_auto_desescalacion,
     desescalar,
@@ -21,6 +24,7 @@ from agent.escalation import (
 from agent.fallas import cargar_fallas_desde_db, obtener_fallas_activas
 from agent.memory import guardar_mensaje, inicializar_db, obtener_historial
 from agent.providers import obtener_proveedor
+from agent.reminders import enviar_recordatorios_diarios, scheduler
 from agent.startup import migrar_knowledge
 from agent.tools import procesar_instalacion
 
@@ -80,10 +84,20 @@ async def lifespan(app: FastAPI):
     migrar_knowledge()
     inicializar_knowledge()
     await cargar_fallas_desde_db()
+    await seed_plantillas()
+    scheduler.add_job(
+        enviar_recordatorios_diarios,
+        CronTrigger(hour=10, minute=0),
+        id="recordatorios",
+        replace_existing=True,
+    )
+    scheduler.start()
     logger.info("Base de datos inicializada")
+    logger.info("Scheduler de recordatorios iniciado — 10:00 AM CDMX")
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
     logger.info(f"Proveedor de WhatsApp: {proveedor.__class__.__name__}")
     yield
+    scheduler.shutdown(wait=False)
 
 
 app = FastAPI(

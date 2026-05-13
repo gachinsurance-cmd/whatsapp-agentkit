@@ -2,6 +2,7 @@
 # Generado por AgentKit
 
 import os
+import re
 import yaml
 import logging
 from anthropic import AsyncAnthropic
@@ -137,6 +138,17 @@ def cargar_system_prompt() -> str:
     return base
 
 
+def limpiar_formato(texto: str) -> str:
+    """
+    Convierte markdown estándar a formato WhatsApp y limpia URLs.
+    1. Elimina asteriscos que rodean URLs (links deben ir sin formato)
+    2. Convierte **negritas** a *negritas* (un solo asterisco — WhatsApp)
+    """
+    texto = re.sub(r'\*+(https?://[^\s*]+)\*+', r'\1', texto)
+    texto = re.sub(r'\*\*(.+?)\*\*', r'*\1*', texto, flags=re.DOTALL)
+    return texto
+
+
 def obtener_mensaje_error() -> str:
     config = cargar_config_prompts()
     return config.get("error_message", "Uy, tuve un problemita técnico. Intenta de nuevo en un momento, por favor.")
@@ -184,6 +196,7 @@ async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
         )
 
         respuesta = response.content[0].text
+        respuesta = limpiar_formato(respuesta)
         logger.info(f"Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
         return respuesta
 

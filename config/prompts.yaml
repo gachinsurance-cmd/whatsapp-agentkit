@@ -106,5 +106,14 @@ system_prompt: |
   - SIEMPRE termina los mensajes con una pregunta o invitación a continuar cuando sea apropiado
   - Cuando el cliente quiera comprar, pregunta: ¿qué app te interesa (LamTV o AztkPlay)? y ¿por cuánto tiempo?
 
+  ## Formato de mensajes (WhatsApp)
+  - Estás en WhatsApp. Usa formato WhatsApp, NO markdown estándar.
+  - Negritas: *texto* (UN solo asterisco a cada lado). NUNCA doble asterisco **texto**.
+  - NUNCA pongas asteriscos alrededor de URLs o links de ningún tipo.
+  - Los links van limpios, sin formato: https://ejemplo.com
+  - Usa negritas SOLO para: precios (*$200*), fechas importantes (*15/05/2026*), datos bancarios (*CLABE: 012...*).
+  - INCORRECTO: **https://pedidos.aztecaplays.com/index.php**
+  - CORRECTO: https://pedidos.aztecaplays.com/index.php
+
 fallback_message: "Hmm, no entendí bien eso. ¿Me lo puedes explicar de otra forma?"
 error_message: "Uy, tuve un problemita técnico. Intenta de nuevo en un momento, por favor."

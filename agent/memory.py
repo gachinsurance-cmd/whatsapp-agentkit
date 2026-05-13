@@ -1,11 +1,11 @@
 # agent/memory.py — Memoria de conversaciones y estado del sistema
 
 import os
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Boolean, String, Text, DateTime, select, Integer
+from sqlalchemy import Boolean, Date, ForeignKey, String, Text, DateTime, select, Integer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -59,6 +59,43 @@ class NumeroBloqueado(Base):
     telefono: Mapped[str] = mapped_column(String(50), primary_key=True)
     motivo: Mapped[str] = mapped_column(Text, default="")
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Cliente(Base):
+    __tablename__ = "clientes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telefono: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(100), nullable=False)
+    producto: Mapped[str] = mapped_column(String(10), nullable=False)   # LamTV | AztkPlay
+    plan_meses: Mapped[int] = mapped_column(Integer, nullable=False)
+    fecha_activacion: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_vencimiento: Mapped[date] = mapped_column(Date, nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    recordatorios_pausados: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notas: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PlantillaRecordatorio(Base):
+    __tablename__ = "plantillas_recordatorio"
+
+    tipo: Mapped[str] = mapped_column(String(20), primary_key=True)     # 7_dias|1_dia|vencimiento
+    producto: Mapped[str] = mapped_column(String(10), primary_key=True) # LamTV|AztkPlay
+    mensaje: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class HistorialRecordatorio(Base):
+    __tablename__ = "historial_recordatorios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cliente_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    enviado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    mensaje_enviado: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 async def inicializar_db():

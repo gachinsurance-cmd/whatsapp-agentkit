@@ -2,14 +2,19 @@
 
 import os
 import logging
-from datetime import datetime
+from datetime import date as DateType, datetime
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from agent.auth import ADMIN_USERNAME, create_token, verify_password, verify_token
+from agent.clientes import (
+    actualizar_cliente, actualizar_plantilla, borrar_cliente, crear_cliente,
+    importar_csv, listar_clientes, listar_historial, listar_plantillas, toggle_pausa,
+)
 from agent.escalation import (
     bloquear, desbloquear, desescalar, listar_bloqueados, listar_escalaciones,
 )
@@ -287,3 +292,149 @@ async def remove_bloqueado(telefono: str, request: Request):
         raise HTTPException(status_code=404, detail="Número no está en la lista negra")
     logger.info(f"Admin desbloqueó: {telefono}")
     return {"ok": True}
+
+
+# ── Clientes ───────────────────────────────────────────────────────────────────
+
+_PRODUCTOS_VALIDOS = {"LamTV", "AztkPlay"}
+_PLANES_VALIDOS = {1, 3, 6, 12}
+_TIPOS_VALIDOS = {"7_dias", "1_dia", "vencimiento"}
+
+
+class ClienteCreate(BaseModel):
+    nombre: str
+    telefono: str
+    producto: str
+    plan_meses: int
+    fecha_activacion: DateType
+    notas: str = ""
+
+
+class ClienteUpdate(BaseModel):
+    nombre: Optional[str] = None
+    telefono: Optional[str] = None
+    producto: Optional[str] = None
+    plan_meses: Optional[int] = None
+    fecha_activacion: Optional[DateType] = None
+    activo: Optional[bool] = None
+    notas: Optional[str] = None
+
+
+class PlantillaUpdate(BaseModel):
+    mensaje: str
+
+
+def _validar_cliente(producto: str, plan_meses: int) -> None:
+    if producto not in _PRODUCTOS_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"producto inválido. Usa: {_PRODUCTOS_VALIDOS}")
+    if plan_meses not in _PLANES_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"plan_meses inválido. Usa: {_PLANES_VALIDOS}")
+
+
+@router.get("/clientes")
+async def get_clientes(
+    request: Request,
+    producto: Optional[str] = Query(None),
+    dias_max: Optional[int] = Query(None),
+):
+    _require_auth(request)
+    return {"clientes": await listar_clientes(producto=producto, dias_max=dias_max)}
+
+
+@router.post("/clientes")
+async def post_cliente(body: ClienteCreate, request: Request):
+    _require_auth(request)
+    _validar_cliente(body.producto, body.plan_meses)
+    try:
+        cliente = await crear_cliente(
+            nombre=body.nombre.strip(),
+            telefono=body.telefono.strip(),
+            producto=body.producto,
+            plan_meses=body.plan_meses,
+            fecha_activacion=body.fecha_activacion,
+            notas=body.notas.strip(),
+        )
+    except Exception as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="El teléfono ya existe")
+        raise HTTPException(status_code=500, detail=str(e))
+    logger.info(f"Admin creó cliente: {body.nombre} ({body.telefono})")
+    return cliente
+
+
+@router.put("/clientes/{cliente_id}")
+async def put_cliente(cliente_id: int, body: ClienteUpdate, request: Request):
+    _require_auth(request)
+    cambios = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "producto" in cambios:
+        _validar_cliente(cambios["producto"], cambios.get("plan_meses", 1))
+    cliente = await actualizar_cliente(cliente_id, cambios)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    logger.info(f"Admin actualizó cliente id={cliente_id}")
+    return cliente
+
+
+@router.delete("/clientes/{cliente_id}")
+async def del_cliente(cliente_id: int, request: Request):
+    _require_auth(request)
+    if not await borrar_cliente(cliente_id):
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    logger.info(f"Admin eliminó cliente id={cliente_id}")
+    return {"ok": True}
+
+
+# Ruta fija ANTES del patrón /{id}/pausar para que FastAPI no confunda
+@router.post("/clientes/importar")
+async def importar_clientes(request: Request, file: UploadFile = File(...)):
+    _require_auth(request)
+    if not (file.filename or "").endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Se requiere un archivo .csv")
+    datos = await file.read()
+    if len(datos) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV demasiado grande (máx 5 MB)")
+    resultado = await importar_csv(datos)
+    logger.info(f"Import CSV: {resultado['insertados']} insertados, {resultado['actualizados']} actualizados")
+    return resultado
+
+
+@router.post("/clientes/{cliente_id}/pausar")
+async def pausar_cliente(cliente_id: int, request: Request):
+    _require_auth(request)
+    estado = await toggle_pausa(cliente_id)
+    if not estado:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return estado
+
+
+# ── Plantillas ─────────────────────────────────────────────────────────────────
+
+@router.get("/plantillas")
+async def get_plantillas(request: Request):
+    _require_auth(request)
+    return {"plantillas": await listar_plantillas()}
+
+
+@router.put("/plantillas/{tipo}/{producto}")
+async def put_plantilla(tipo: str, producto: str, body: PlantillaUpdate, request: Request):
+    _require_auth(request)
+    if tipo not in _TIPOS_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"tipo inválido. Usa: {_TIPOS_VALIDOS}")
+    if producto not in _PRODUCTOS_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"producto inválido. Usa: {_PRODUCTOS_VALIDOS}")
+    if not await actualizar_plantilla(tipo, producto, body.mensaje.strip()):
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    logger.info(f"Admin actualizó plantilla {tipo}/{producto}")
+    return {"ok": True}
+
+
+# ── Historial ──────────────────────────────────────────────────────────────────
+
+@router.get("/historial")
+async def get_historial(
+    request: Request,
+    cliente_id: Optional[int] = Query(None),
+    limite: int = Query(50, le=200),
+):
+    _require_auth(request)
+    return {"historial": await listar_historial(cliente_id=cliente_id, limite=limite)}
