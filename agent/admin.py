@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from agent.auth import ADMIN_USERNAME, create_token, verify_password, verify_token
@@ -53,6 +53,22 @@ def _require_auth(request: Request) -> None:
 # ── Router ─────────────────────────────────────────────────────────────────────
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+_TEMPLATE = Path(__file__).parent / "templates" / "panel.html"
+
+
+@router.get("", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def panel():
+    """Sirve el panel de administración (SPA — el JS maneja auth)."""
+    return HTMLResponse(content=_TEMPLATE.read_text(encoding="utf-8"))
+
+
+@router.get("/me")
+async def me(request: Request):
+    """Verifica si la sesión actual es válida. Usado por el frontend al cargar."""
+    _require_auth(request)
+    return {"username": ADMIN_USERNAME}
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
