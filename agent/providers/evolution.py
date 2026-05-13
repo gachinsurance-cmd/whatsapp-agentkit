@@ -40,6 +40,10 @@ class ProveedorEvolution(ProveedorWhatsApp):
         texto = (
             message.get("conversation")
             or message.get("extendedTextMessage", {}).get("text")
+            or message.get("imageMessage", {}).get("caption")
+            or message.get("videoMessage", {}).get("caption")
+            or message.get("documentMessage", {}).get("caption")
+            or message.get("audioMessage", {}).get("caption")
             or ""
         )
         mensaje_id = key.get("id", "")
