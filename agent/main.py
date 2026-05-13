@@ -36,7 +36,17 @@ proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8000))
 
 # Palabras que indican el cliente quiere hablar con un humano → escalación inmediata
-_KEYWORDS_HUMANO = {"humano", "asesor", "persona", "administrador"}
+_KEYWORDS_HUMANO = {
+    # Pedir atención humana
+    "humano", "asesor", "persona", "administrador",
+    # Intención de pago / renovación
+    "renovar", "renovacion", "renovación",
+    "activar", "activacion", "activación", "actívame",
+    "reactivar", "reactivacion", "reactivación",
+    "comprobante", "pago", "pagué", "pague", "pagar",
+    "deposito", "depósito", "transferencia", "transferi", "transferí",
+    "listo",
+}
 
 # Palabras que reportan un problema → escalar SOLO si no hay falla conocida del servicio
 _KEYWORDS_PROBLEMA = {"falla", "no funciona", "no jala", "no sirve"}
