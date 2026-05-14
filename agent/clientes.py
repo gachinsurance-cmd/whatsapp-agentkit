@@ -163,6 +163,39 @@ async def borrar_cliente(cliente_id: int) -> bool:
     return True
 
 
+async def preparar_recordatorio_manual(cliente_id: int) -> dict | None:
+    """
+    Prepara el mensaje de recordatorio para envío manual.
+    Retorna {telefono, nombre, tipo, mensaje} o None si no existe el cliente/plantilla.
+    """
+    hoy = _hoy_cdmx()
+    async with async_session() as session:
+        c = await session.get(Cliente, cliente_id)
+        if not c:
+            return None
+        dias = (c.fecha_vencimiento - hoy).days
+        if dias <= 0:
+            tipo = "vencimiento"
+        elif dias == 1:
+            tipo = "1_dia"
+        else:
+            tipo = "7_dias"
+        plantilla = await session.get(PlantillaRecordatorio, (tipo, c.producto))
+        if not plantilla:
+            return None
+        try:
+            mensaje = plantilla.mensaje.format(
+                nombre=c.nombre,
+                producto=c.producto,
+                usuario_app=c.usuario_app or c.nombre,
+                fecha_vencimiento=c.fecha_vencimiento.strftime("%d/%m/%Y"),
+                dias_restantes=max(dias, 0),
+            )
+        except (KeyError, ValueError):
+            return None
+        return {"telefono": c.telefono, "nombre": c.nombre, "tipo": tipo, "mensaje": mensaje}
+
+
 async def toggle_pausa(cliente_id: int) -> dict | None:
     async with async_session() as session:
         c = await session.get(Cliente, cliente_id)

@@ -36,7 +36,8 @@
     .section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
     .action-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
     .filter-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-    .filter-bar select,.filter-bar input{width:auto;flex:1;min-width:120px;max-width:180px}
+    .filter-bar select,.filter-bar input{width:auto;flex:1;min-width:120px}
+    #fil-texto{min-width:180px;flex:2}
     table{width:100%;border-collapse:collapse}
     th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
     td{padding:10px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
@@ -170,9 +171,10 @@
       <span id="import-status" style="font-size:12px;margin-left:4px"></span>
     </div>
     <div class="filter-bar">
+      <input type="text" id="fil-texto" placeholder="Buscar nombre, usuario, teléfono…">
       <select id="fil-producto"><option value="">Todos los productos</option><option>LamTV</option><option>AztkPlay</option></select>
       <input type="number" id="fil-dias" placeholder="Vence en ≤ N días" min="0">
-      <button class="btn btn-ghost btn-sm" id="btn-filtrar">Filtrar</button>
+      <select id="fil-estado"><option value="">Todos los estados</option><option value="activo">Activo</option><option value="vencido">Vencido</option><option value="pausado">Pausado</option></select>
       <button class="btn btn-ghost btn-sm" id="btn-refresh-cli">↻</button>
     </div>
     <table id="cli-table"><thead><tr>
@@ -248,7 +250,7 @@
 'use strict';
 
 const $=id=>document.getElementById(id);
-let fileList=[],escList=[],blockList=[],cliList=[],activeFile=null,mde=null;
+let fileList=[],escList=[],blockList=[],cliAll=[],cliList=[],activeFile=null,mde=null;
 const TEXT_EXT=new Set(['txt','md','csv','json','yaml','yml']);
 const MD_EXT=new Set(['md']);
 
@@ -348,25 +350,55 @@ $('block-tbody').addEventListener('click',async e=>{const btn=e.target.closest('
 function diasBadge(d){if(d<0)return`<span class="badge badge-danger">Vencido ${-d}d</span>`;if(d===0)return`<span class="badge badge-danger">Hoy</span>`;if(d<=3)return`<span class="badge badge-warn">${d}d</span>`;if(d<=7)return`<span class="badge badge-warn">${d}d</span>`;return`<span class="badge badge-ok">${d}d</span>`;}
 function rowBg(d,pausado){if(pausado)return'';if(d<0)return'background:rgba(239,68,68,.08)';if(d===0)return'background:rgba(249,115,22,.1)';if(d<=3)return'background:rgba(234,179,8,.08)';if(d<=7)return'background:rgba(234,179,8,.04)';return'';}
 
-async function loadClientes(prod,dias){
+function normalizar(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+
+async function loadClientes(){
   $('cli-tbody').innerHTML='';$('cli-empty').classList.add('hidden');
-  let url='/admin/clientes';const p=new URLSearchParams();
-  if(prod)p.set('producto',prod);if(dias!==undefined&&dias!=='')p.set('dias_max',dias);
-  if(p.toString())url+='?'+p.toString();
-  const r=await apiFetch(url);if(!r)return;
-  const{clientes}=await r.json();cliList=clientes;
-  if(!clientes.length){$('cli-empty').classList.remove('hidden');return;}
-  clientes.forEach((c,i)=>{
+  const r=await apiFetch('/admin/clientes');if(!r)return;
+  const{clientes}=await r.json();cliAll=clientes;
+  applyFiltros();
+}
+
+function applyFiltros(){
+  const texto=normalizar($('fil-texto').value);
+  const prod=$('fil-producto').value;
+  const diasVal=$('fil-dias').value;
+  const diasMax=diasVal!==''?parseInt(diasVal):null;
+  const estado=$('fil-estado').value;
+  const filtered=cliAll.filter(c=>{
+    if(texto){
+      const hay=normalizar(c.nombre)+' '+normalizar(c.usuario_app)+' '+normalizar(c.telefono);
+      if(!hay.includes(texto))return false;
+    }
+    if(prod&&c.producto!==prod)return false;
+    if(diasMax!==null&&c.dias_hasta_vencer>diasMax)return false;
+    if(estado==='activo'&&!(c.activo&&!c.recordatorios_pausados&&c.dias_hasta_vencer>=0))return false;
+    if(estado==='vencido'&&c.dias_hasta_vencer>=0)return false;
+    if(estado==='pausado'&&!c.recordatorios_pausados)return false;
+    return true;
+  });
+  renderClientes(filtered);
+}
+
+function renderClientes(lista){
+  cliList=lista;
+  const tbody=$('cli-tbody');tbody.innerHTML='';
+  if(!lista.length){$('cli-empty').classList.remove('hidden');return;}
+  $('cli-empty').classList.add('hidden');
+  lista.forEach((c,i)=>{
     const tr=document.createElement('tr');tr.setAttribute('style',rowBg(c.dias_hasta_vencer,c.recordatorios_pausados));
     const pausaLabel=c.recordatorios_pausados?'▶ Reanudar':'⏸ Pausar';
     const estadoBadge=!c.activo?'<span class="badge badge-muted">Inactivo</span>':c.recordatorios_pausados?'<span class="badge badge-muted">⏸ Pausado</span>':'<span class="badge badge-ok">Activo</span>';
-    tr.innerHTML=`<td class="fname">${esc(c.nombre)}</td><td class="fmeta">${esc(c.usuario_app||'—')}</td><td class="fmeta">${esc(c.telefono)}</td><td class="fmeta">${esc(c.producto)} · ${c.plan_meses}m</td><td class="fmeta">${fmtDateShort(c.fecha_vencimiento)}</td><td>${diasBadge(c.dias_hasta_vencer)}</td><td>${estadoBadge}</td><td><div class="actions"><button class="btn btn-ghost btn-sm" data-action="edit" data-i="${i}">Editar</button><button class="btn btn-ghost btn-sm" data-action="pausar" data-i="${i}">${pausaLabel}</button><button class="btn btn-danger btn-sm" data-action="del" data-i="${i}">✕</button></div></td>`;
-    $('cli-tbody').appendChild(tr);
+    tr.innerHTML=`<td class="fname">${esc(c.nombre)}</td><td class="fmeta">${esc(c.usuario_app||'—')}</td><td class="fmeta">${esc(c.telefono)}</td><td class="fmeta">${esc(c.producto)} · ${c.plan_meses}m</td><td class="fmeta">${fmtDateShort(c.fecha_vencimiento)}</td><td>${diasBadge(c.dias_hasta_vencer)}</td><td>${estadoBadge}</td><td><div class="actions"><button class="btn btn-ghost btn-sm" data-action="edit" data-i="${i}">Editar</button><button class="btn btn-ghost btn-sm" data-action="avisar" data-i="${i}">📨 Avisar</button><button class="btn btn-ghost btn-sm" data-action="pausar" data-i="${i}">${pausaLabel}</button><button class="btn btn-danger btn-sm" data-action="del" data-i="${i}">✕</button></div></td>`;
+    tbody.appendChild(tr);
   });
 }
 
-$('btn-filtrar').addEventListener('click',()=>loadClientes($('fil-producto').value,$('fil-dias').value));
-$('btn-refresh-cli').addEventListener('click',()=>loadClientes());
+['fil-texto','fil-producto','fil-dias','fil-estado'].forEach(id=>{
+  const el=$(id);if(el)el.addEventListener('input',applyFiltros);
+  if(el&&el.tagName==='SELECT')el.addEventListener('change',applyFiltros);
+});
+$('btn-refresh-cli').addEventListener('click',loadClientes);
 
 $('cli-tbody').addEventListener('click',async e=>{
   const btn=e.target.closest('[data-action]');if(!btn)return;
@@ -374,6 +406,7 @@ $('cli-tbody').addEventListener('click',async e=>{
   if(btn.dataset.action==='edit')openClienteModal(c);
   if(btn.dataset.action==='del')deleteCliente(c);
   if(btn.dataset.action==='pausar')pausarCliente(c);
+  if(btn.dataset.action==='avisar')enviarRecordatorio(c,btn);
 });
 
 async function deleteCliente(c){
@@ -385,6 +418,21 @@ async function deleteCliente(c){
 async function pausarCliente(c){
   const r=await apiFetch(`/admin/clientes/${c.id}/pausar`,{method:'POST'});
   if(r&&r.ok)loadClientes();
+}
+
+async function enviarRecordatorio(c,btn){
+  const textoOrig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳';
+  const r=await apiFetch(`/admin/clientes/${c.id}/recordatorio`,{method:'POST'});
+  btn.disabled=false;btn.textContent=textoOrig;
+  if(!r)return;
+  if(r.ok){
+    const d=await r.json();
+    alert(`✓ Enviado a ${esc(c.nombre)}\n\n${d.mensaje}`);
+  }else{
+    const d=await r.json().catch(()=>({}));
+    alert(`Error: ${d.detail||'No se pudo enviar el mensaje'}`);
+  }
 }
 
 // Agregar / Editar cliente

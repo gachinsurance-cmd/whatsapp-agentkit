@@ -13,7 +13,8 @@ from pydantic import BaseModel
 from agent.auth import ADMIN_USERNAME, create_token, verify_password, verify_token
 from agent.clientes import (
     actualizar_cliente, actualizar_plantilla, borrar_cliente, crear_cliente,
-    importar_csv, listar_clientes, listar_historial, listar_plantillas, toggle_pausa,
+    importar_csv, listar_clientes, listar_historial, listar_plantillas,
+    preparar_recordatorio_manual, toggle_pausa,
 )
 from agent.escalation import (
     bloquear, desbloquear, desescalar, listar_bloqueados, listar_escalaciones,
@@ -408,6 +409,25 @@ async def pausar_cliente(cliente_id: int, request: Request):
     if not estado:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return estado
+
+
+@router.post("/clientes/{cliente_id}/recordatorio")
+async def enviar_recordatorio_manual(cliente_id: int, request: Request):
+    """Envía un recordatorio de vencimiento manualmente a un cliente específico."""
+    _require_auth(request)
+    resultado = await preparar_recordatorio_manual(cliente_id)
+    if not resultado:
+        raise HTTPException(
+            status_code=404, detail="Cliente no encontrado o plantilla no disponible"
+        )
+    from agent.providers import obtener_proveedor
+    ok = await obtener_proveedor().enviar_mensaje(resultado["telefono"], resultado["mensaje"])
+    if not ok:
+        raise HTTPException(status_code=502, detail="Error al enviar el mensaje por WhatsApp")
+    logger.info(
+        f"Recordatorio manual ({resultado['tipo']}) → {resultado['nombre']} ({resultado['telefono']})"
+    )
+    return {"ok": True, "mensaje": resultado["mensaje"]}
 
 
 # ── Plantillas ─────────────────────────────────────────────────────────────────
