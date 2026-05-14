@@ -263,10 +263,10 @@ async def importar_csv(datos: bytes) -> dict:
             fecha_venc = calcular_vencimiento(fecha_act, plan_meses)
 
             async with async_session() as session:
-                result = await session.execute(
-                    select(Cliente).where(Cliente.telefono == telefono)
-                )
-                existente = result.scalars().first()
+                stmt = select(Cliente).where(Cliente.telefono == telefono)
+                if usuario_app:
+                    stmt = stmt.where(Cliente.usuario_app == usuario_app)
+                existente = (await session.execute(stmt)).scalars().first()
                 if existente:
                     existente.nombre = nombre
                     existente.producto = producto

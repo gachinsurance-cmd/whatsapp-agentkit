@@ -65,7 +65,7 @@ class Cliente(Base):
     __tablename__ = "clientes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telefono: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    telefono: Mapped[str] = mapped_column(String(50), nullable=False)
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     producto: Mapped[str] = mapped_column(String(10), nullable=False)   # LamTV | AztkPlay
     plan_meses: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -111,6 +111,14 @@ async def inicializar_db():
             ))
         except Exception:
             pass  # columna ya existe (SQLite no soporta IF NOT EXISTS)
+    # Quitar unique constraint de telefono (ahora se permiten múltiples usuarios por teléfono)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(
+                "ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_telefono_key"
+            ))
+        except Exception:
+            pass  # SQLite o constraint ya inexistente
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):

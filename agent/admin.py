@@ -359,8 +359,6 @@ async def post_cliente(body: ClienteCreate, request: Request):
             notas=body.notas.strip(),
         )
     except Exception as e:
-        if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="El teléfono ya existe")
         raise HTTPException(status_code=500, detail=str(e))
     logger.info(f"Admin creó cliente: {body.nombre} ({body.telefono})")
     return cliente
