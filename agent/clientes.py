@@ -184,6 +184,9 @@ async def importar_csv(datos: bytes) -> dict:
             continue
     else:
         raise ValueError("No se pudo decodificar el archivo CSV")
+    # Detectar y normalizar separador
+    if '\t' in text.split('\n')[0]:
+        text = text.replace('\t', ',')
     reader = csv.DictReader(io.StringIO(text))
     requeridos = {"nombre", "telefono", "producto", "plan_meses", "fecha_activacion"}
     productos_validos = {"LamTV", "AztkPlay"}
@@ -217,7 +220,13 @@ async def importar_csv(datos: bytes) -> dict:
                 errores.append({"fila": i, "error": f"plan_meses inválido: {plan_meses}. Usa 1, 3, 6 o 12"})
                 continue
 
-            fecha_act = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+            if '/' in fecha_str:
+                partes = fecha_str.split('/')
+                if len(partes[2]) == 4:  # DD/MM/YYYY
+                    fecha_str = f"{partes[2]}-{partes[1].zfill(2)}-{partes[0].zfill(2)}"
+                else:  # MM/DD/YY o similar
+                    fecha_str = f"20{partes[2]}-{partes[0].zfill(2)}-{partes[1].zfill(2)}"
+            fecha_act = date.fromisoformat(fecha_str)
             fecha_venc = calcular_vencimiento(fecha_act, plan_meses)
 
             async with async_session() as session:
