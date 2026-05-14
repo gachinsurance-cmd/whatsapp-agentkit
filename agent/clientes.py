@@ -165,7 +165,14 @@ async def toggle_pausa(cliente_id: int) -> dict | None:
 
 async def importar_csv(datos: bytes) -> dict:
     """Upsert de clientes desde CSV. Retorna {insertados, actualizados, errores}."""
-    text = datos.decode("utf-8-sig")  # Maneja BOM de Excel
+    for encoding in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
+        try:
+            text = datos.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError("No se pudo decodificar el archivo CSV")
     reader = csv.DictReader(io.StringIO(text))
     requeridos = {"nombre", "telefono", "producto", "plan_meses", "fecha_activacion"}
     productos_validos = {"LamTV", "AztkPlay"}
