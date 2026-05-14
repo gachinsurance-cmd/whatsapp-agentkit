@@ -19,25 +19,31 @@ _TZ_CDMX = ZoneInfo("America/Mexico_City")
 
 _PLANTILLAS_DEFAULT = [
     ("7_dias", "LamTV",
-     "Hola {nombre} 👋 Tu suscripción de *LamTV* vence el *{fecha_vencimiento}* "
-     "(en {dias_restantes} días). ¡Es buen momento para renovar y no perder el servicio! "
+     "Hola *{nombre}*, buen día 👋\n"
+     "Te informo que el servicio de tu usuario *{usuario_app}* de *LamTV* vence el *{fecha_vencimiento}* "
+     "(en {dias_restantes} días). ¡Renueva a tiempo para no perder el servicio! "
      "Escríbenos cuando estés listo 🙌"),
     ("7_dias", "AztkPlay",
-     "Hola {nombre} 👋 Tu suscripción de *AztkPlay* vence el *{fecha_vencimiento}* "
+     "Hola *{nombre}*, buen día 👋\n"
+     "Te informo que el servicio de tu usuario *{usuario_app}* de *AztkPlay* vence el *{fecha_vencimiento}* "
      "(en {dias_restantes} días). ¡Renueva antes para continuar sin interrupciones! "
      "Cualquier duda aquí estamos 🙌"),
     ("1_dia", "LamTV",
-     "Hola {nombre} ⏰ Mañana vence tu *LamTV* (*{fecha_vencimiento}*). "
+     "Hola *{nombre}* ⏰\n"
+     "Mañana vence el servicio de tu usuario *{usuario_app}* de *LamTV* (*{fecha_vencimiento}*). "
      "¡No te quedes sin servicio! Escríbenos hoy y lo renovamos rápido 💪"),
     ("1_dia", "AztkPlay",
-     "Hola {nombre} ⏰ Mañana vence tu *AztkPlay* (*{fecha_vencimiento}*). "
+     "Hola *{nombre}* ⏰\n"
+     "Mañana vence el servicio de tu usuario *{usuario_app}* de *AztkPlay* (*{fecha_vencimiento}*). "
      "¡Renueva hoy para no perder el acceso! Contáctanos y lo resolvemos en minutos 💪"),
     ("vencimiento", "LamTV",
-     "Hola {nombre} 📅 Hoy vence tu *LamTV*. Para seguir disfrutando sin cortes, "
-     "renueva ahora. ¡Escríbenos y en minutos quedas activo! 🚀"),
+     "Hola *{nombre}* 📅\n"
+     "Hoy vence el servicio de tu usuario *{usuario_app}* de *LamTV*. "
+     "Para seguir disfrutando sin cortes, renueva ahora. ¡Escríbenos y en minutos quedas activo! 🚀"),
     ("vencimiento", "AztkPlay",
-     "Hola {nombre} 📅 Hoy vence tu *AztkPlay*. Para no perder el acceso, "
-     "activa hoy mismo. ¡Contáctanos y te activamos de inmediato! 🚀"),
+     "Hola *{nombre}* 📅\n"
+     "Hoy vence el servicio de tu usuario *{usuario_app}* de *AztkPlay*. "
+     "Para no perder el acceso, activa hoy mismo. ¡Contáctanos y te activamos de inmediato! 🚀"),
 ]
 
 
@@ -62,6 +68,7 @@ def _cliente_dict(c: Cliente) -> dict:
         "id": c.id,
         "telefono": c.telefono,
         "nombre": c.nombre,
+        "usuario_app": c.usuario_app,
         "producto": c.producto,
         "plan_meses": c.plan_meses,
         "fecha_activacion": c.fecha_activacion.isoformat(),
@@ -78,15 +85,19 @@ def _cliente_dict(c: Cliente) -> dict:
 # ── Seed ───────────────────────────────────────────────────────────────────────
 
 async def seed_plantillas() -> None:
-    """Inserta las 6 plantillas default si la tabla está vacía. Idempotente."""
+    """
+    Upserta las 6 plantillas. Si una ya existe pero no tiene {usuario_app},
+    la actualiza al nuevo texto. Si ya fue personalizada con {usuario_app}, no toca nada.
+    """
     async with async_session() as session:
-        result = await session.execute(select(PlantillaRecordatorio).limit(1))
-        if result.scalars().first():
-            return
         for tipo, producto, mensaje in _PLANTILLAS_DEFAULT:
-            session.add(PlantillaRecordatorio(tipo=tipo, producto=producto, mensaje=mensaje))
+            p = await session.get(PlantillaRecordatorio, (tipo, producto))
+            if not p:
+                session.add(PlantillaRecordatorio(tipo=tipo, producto=producto, mensaje=mensaje))
+            elif "{usuario_app}" not in p.mensaje:
+                p.mensaje = mensaje
         await session.commit()
-    logger.info("Plantillas de recordatorio inicializadas")
+    logger.info("Plantillas de recordatorio verificadas")
 
 
 # ── Clientes CRUD ──────────────────────────────────────────────────────────────
@@ -111,14 +122,14 @@ async def listar_clientes(producto: str | None = None, dias_max: int | None = No
 
 async def crear_cliente(
     nombre: str, telefono: str, producto: str, plan_meses: int,
-    fecha_activacion: date, notas: str = "",
+    fecha_activacion: date, notas: str = "", usuario_app: str | None = None,
 ) -> dict:
     venc = calcular_vencimiento(fecha_activacion, plan_meses)
     async with async_session() as session:
         c = Cliente(
             telefono=telefono, nombre=nombre, producto=producto,
             plan_meses=plan_meses, fecha_activacion=fecha_activacion,
-            fecha_vencimiento=venc, notas=notas,
+            fecha_vencimiento=venc, notas=notas, usuario_app=usuario_app or None,
         )
         session.add(c)
         await session.commit()
@@ -194,6 +205,7 @@ async def importar_csv(datos: bytes) -> dict:
             plan_meses = int(row["plan_meses"].strip())
             fecha_str = row["fecha_activacion"].strip()
             notas = row.get("notas", "").strip()
+            usuario_app = row.get("usuario_app", "").strip() or None
 
             if not nombre or not telefono:
                 errores.append({"fila": i, "error": "nombre y telefono son requeridos"})
@@ -220,13 +232,14 @@ async def importar_csv(datos: bytes) -> dict:
                     existente.fecha_activacion = fecha_act
                     existente.fecha_vencimiento = fecha_venc
                     existente.notas = notas
+                    existente.usuario_app = usuario_app
                     existente.actualizado_en = datetime.utcnow()
                     actualizados += 1
                 else:
                     session.add(Cliente(
                         telefono=telefono, nombre=nombre, producto=producto,
                         plan_meses=plan_meses, fecha_activacion=fecha_act,
-                        fecha_vencimiento=fecha_venc, notas=notas,
+                        fecha_vencimiento=fecha_venc, notas=notas, usuario_app=usuario_app,
                     ))
                     insertados += 1
                 await session.commit()

@@ -90,6 +90,7 @@ async def enviar_recordatorios_diarios() -> None:
             mensaje = plantilla.mensaje.format(
                 nombre=cliente.nombre,
                 producto=cliente.producto,
+                usuario_app=cliente.usuario_app or cliente.nombre,
                 fecha_vencimiento=cliente.fecha_vencimiento.strftime("%d/%m/%Y"),
                 dias_restantes=max(dias, 0),
             )

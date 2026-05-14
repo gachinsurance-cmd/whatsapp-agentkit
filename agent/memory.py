@@ -5,7 +5,7 @@ from datetime import datetime, date
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Boolean, Date, ForeignKey, String, Text, DateTime, select, Integer
+from sqlalchemy import Boolean, Date, ForeignKey, String, Text, DateTime, select, Integer, text
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -73,6 +73,7 @@ class Cliente(Base):
     fecha_vencimiento: Mapped[date] = mapped_column(Date, nullable=False)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     recordatorios_pausados: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    usuario_app: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     notas: Mapped[str] = mapped_column(Text, nullable=False, default="")
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -99,9 +100,17 @@ class HistorialRecordatorio(Base):
 
 
 async def inicializar_db():
-    """Crea todas las tablas si no existen."""
+    """Crea todas las tablas si no existen y aplica migraciones incrementales."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Columnas añadidas tras el deploy inicial
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(
+                "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS usuario_app VARCHAR(100)"
+            ))
+        except Exception:
+            pass  # columna ya existe (SQLite no soporta IF NOT EXISTS)
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):

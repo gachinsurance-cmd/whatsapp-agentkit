@@ -307,6 +307,7 @@ class ClienteCreate(BaseModel):
     producto: str
     plan_meses: int
     fecha_activacion: DateType
+    usuario_app: Optional[str] = None
     notas: str = ""
 
 
@@ -317,6 +318,7 @@ class ClienteUpdate(BaseModel):
     plan_meses: Optional[int] = None
     fecha_activacion: Optional[DateType] = None
     activo: Optional[bool] = None
+    usuario_app: Optional[str] = None
     notas: Optional[str] = None
 
 
@@ -352,6 +354,7 @@ async def post_cliente(body: ClienteCreate, request: Request):
             producto=body.producto,
             plan_meses=body.plan_meses,
             fecha_activacion=body.fecha_activacion,
+            usuario_app=body.usuario_app.strip() if body.usuario_app else None,
             notas=body.notas.strip(),
         )
     except Exception as e:

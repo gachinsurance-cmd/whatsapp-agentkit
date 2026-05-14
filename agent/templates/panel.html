@@ -176,7 +176,7 @@
       <button class="btn btn-ghost btn-sm" id="btn-refresh-cli">↻</button>
     </div>
     <table id="cli-table"><thead><tr>
-      <th>Nombre</th><th>Teléfono</th><th>Producto</th><th>Vencimiento</th><th>Días</th><th>Estado</th><th style="text-align:right">Acciones</th>
+      <th>Nombre</th><th>Usuario App</th><th>Teléfono</th><th>Producto</th><th>Vencimiento</th><th>Días</th><th>Estado</th><th style="text-align:right">Acciones</th>
     </tr></thead><tbody id="cli-tbody"></tbody></table>
     <p id="cli-empty" class="hidden" style="text-align:center;padding:40px 0;color:var(--muted)">Sin clientes registrados.</p>
   </div>
@@ -223,6 +223,7 @@
       <input type="hidden" id="cli-id">
       <div class="grid-2">
         <div class="field"><label>Nombre *</label><input type="text" id="cli-nombre"></div>
+        <div class="field"><label>Usuario App</label><input type="text" id="cli-usuario-app" placeholder="usuario123"></div>
         <div class="field"><label>Teléfono *</label><input type="text" id="cli-telefono" placeholder="521XXXXXXXXXX"></div>
         <div class="field"><label>Producto *</label>
           <select id="cli-producto"><option value="">Seleccionar</option><option>LamTV</option><option>AztkPlay</option></select>
@@ -359,7 +360,7 @@ async function loadClientes(prod,dias){
     const tr=document.createElement('tr');tr.setAttribute('style',rowBg(c.dias_hasta_vencer,c.recordatorios_pausados));
     const pausaLabel=c.recordatorios_pausados?'▶ Reanudar':'⏸ Pausar';
     const estadoBadge=!c.activo?'<span class="badge badge-muted">Inactivo</span>':c.recordatorios_pausados?'<span class="badge badge-muted">⏸ Pausado</span>':'<span class="badge badge-ok">Activo</span>';
-    tr.innerHTML=`<td class="fname">${esc(c.nombre)}</td><td class="fmeta">${esc(c.telefono)}</td><td class="fmeta">${esc(c.producto)} · ${c.plan_meses}m</td><td class="fmeta">${fmtDateShort(c.fecha_vencimiento)}</td><td>${diasBadge(c.dias_hasta_vencer)}</td><td>${estadoBadge}</td><td><div class="actions"><button class="btn btn-ghost btn-sm" data-action="edit" data-i="${i}">Editar</button><button class="btn btn-ghost btn-sm" data-action="pausar" data-i="${i}">${pausaLabel}</button><button class="btn btn-danger btn-sm" data-action="del" data-i="${i}">✕</button></div></td>`;
+    tr.innerHTML=`<td class="fname">${esc(c.nombre)}</td><td class="fmeta">${esc(c.usuario_app||'—')}</td><td class="fmeta">${esc(c.telefono)}</td><td class="fmeta">${esc(c.producto)} · ${c.plan_meses}m</td><td class="fmeta">${fmtDateShort(c.fecha_vencimiento)}</td><td>${diasBadge(c.dias_hasta_vencer)}</td><td>${estadoBadge}</td><td><div class="actions"><button class="btn btn-ghost btn-sm" data-action="edit" data-i="${i}">Editar</button><button class="btn btn-ghost btn-sm" data-action="pausar" data-i="${i}">${pausaLabel}</button><button class="btn btn-danger btn-sm" data-action="del" data-i="${i}">✕</button></div></td>`;
     $('cli-tbody').appendChild(tr);
   });
 }
@@ -393,6 +394,7 @@ function openClienteModal(c){
   $('cli-id').value=c?c.id:'';
   $('cli-modal-title').textContent=c?'Editar cliente':'Nuevo cliente';
   $('cli-nombre').value=c?c.nombre:'';
+  $('cli-usuario-app').value=c?c.usuario_app||'':'';
   $('cli-telefono').value=c?c.telefono:'';
   $('cli-producto').value=c?c.producto:'';
   $('cli-plan').value=c?String(c.plan_meses):'';
@@ -410,7 +412,7 @@ $('cliente-modal').addEventListener('click',e=>{if(e.target===$('cliente-modal')
 
 $('btn-cli-save').addEventListener('click',async()=>{
   const id=$('cli-id').value;
-  const body={nombre:$('cli-nombre').value.trim(),telefono:$('cli-telefono').value.trim(),producto:$('cli-producto').value,plan_meses:parseInt($('cli-plan').value)||0,fecha_activacion:$('cli-fecha').value,activo:$('cli-activo').checked,notas:$('cli-notas').value.trim()};
+  const body={nombre:$('cli-nombre').value.trim(),usuario_app:$('cli-usuario-app').value.trim()||null,telefono:$('cli-telefono').value.trim(),producto:$('cli-producto').value,plan_meses:parseInt($('cli-plan').value)||0,fecha_activacion:$('cli-fecha').value,activo:$('cli-activo').checked,notas:$('cli-notas').value.trim()};
   if(!body.nombre||!body.telefono||!body.producto||!body.plan_meses||!body.fecha_activacion){$('cli-modal-error').textContent='Completa todos los campos obligatorios';return;}
   const url=id?`/admin/clientes/${id}`:'/admin/clientes';
   const method=id?'PUT':'POST';
